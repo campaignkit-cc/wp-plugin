@@ -1,6 +1,6 @@
 <?php
 
-/** 
+/**
  * @wordpress-plugin
  * Plugin Name:  CampaignKit - Email Validation for FluentCRM
  * Version    :  1.0
@@ -15,7 +15,7 @@
 //=================================================
 // Security: Abort if this file is called directly
 //=================================================
-if ( !defined("WPINC") ) { 
+if ( !defined("WPINC") ) {
     die;
 }
 
@@ -34,7 +34,7 @@ function campaignkit_validate_email( $contact ) {
         CURLOPT_URL => $url,
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => array(
-            "Content-Type: application/json", 
+            "Content-Type: application/json",
             "Authorization: Bearer " . $api_key),
         CURLOPT_POSTFIELDS => "{\"emails\": [\"$contact->email\"]}",
         CURLOPT_RETURNTRANSFER => true
@@ -44,10 +44,10 @@ function campaignkit_validate_email( $contact ) {
     $err = curl_error( $curl );
 
     curl_close( $curl );
-    
+
     if ( ! $err ) {
         $responseObj = json_decode( $response );
-        
+
         if ( $responseObj->results[0]->result->score < 5 ) {
             $contact->attachTags( [$fluentcrm_tag] );
             $contact->save();
@@ -81,7 +81,7 @@ function campaignkit_settings_init(){
     /* Create settings field */
     add_settings_field(
         "campaignkit-apikey-field-id",       // Field ID
-        __("API Key", "campaignkit-plugin"), // Field title 
+        __("API Key", "campaignkit-plugin"), // Field title
         "campaignkit_field_callback",        // Field callback function
         "general",                           // Settings page slug
         "campaignkit-section-id"             // Section ID
@@ -96,8 +96,21 @@ function campaignkit_settings_init(){
         /* Create settings field */
         add_settings_field(
             "campaignkit-fluentcrm-tag-field-id",       // Field ID
-            __("FluentCRM Tag", "campaignkit-plugin"),  // Field title 
+            __("FluentCRM Tag", "campaignkit-plugin"),  // Field title
             "campaignkit_fluentcrm_tag_callback",       // Field callback function
+            "general",                                  // Settings page slug
+            "campaignkit-section-id"                    // Section ID
+        );
+
+        register_setting(
+            'general',
+            'campaignkit-fluentcrm-validate'
+        );
+
+        add_settings_field(
+            "campaignkit-fluentcrm-validate-field-id",       // Field ID
+            __("Validate Contacts", "campaignkit-plugin"),  // Field title
+            "campaignkit_fluentcrm_validate_callback",       // Field callback function
             "general",                                  // Settings page slug
             "campaignkit-section-id"                    // Section ID
         );
@@ -114,7 +127,7 @@ function campaignkit_section_description() {
 /* Settings Field Callback */
 function campaignkit_field_callback(){
     ?>
-    <input id="campaignkit_apikey" type="text" value="<?php echo get_option("campaignkit_apikey"); ?>" name="campaignkit_apikey"> 
+    <input id="campaignkit_apikey" type="text" value="<?php echo get_option("campaignkit_apikey"); ?>" name="campaignkit_apikey">
     <p id="campaignkit_apikey-description" class="description">
         <?php _e("CampaignKit's API Key.", "campaignkit-plugin"); ?>
     </p>
@@ -122,12 +135,12 @@ function campaignkit_field_callback(){
 }
 
 function campaignkit_fluentcrm_tag_callback() {
-    $tagApi = FluentCrmApi("tags");    
-    $allTags = $tagApi->all(); 
+    $tagApi = FluentCrmApi("tags");
+    $allTags = $tagApi->all();
     $selected_tag = (int) get_option("campaignkit_fluentcrm_tag", "-1");
 
     ?>
-    <select id="campaignkit_fluentcrm_tag" name="campaignkit_fluentcrm_tag"> 
+    <select id="campaignkit_fluentcrm_tag" name="campaignkit_fluentcrm_tag">
         <option value="-1" <?php selected($selected_tag, $tag->id); ?>></option>
         <?php
             foreach ($allTags as $tag) {
@@ -140,5 +153,37 @@ function campaignkit_fluentcrm_tag_callback() {
     <?php
 }
 
+function campaignkit_fluentcrm_validate_callback() {
+    ?>
+        <input type="submit" name="campaignkit_fluentcrm_validate" class="button button-primary" value="Validate all contacts"/>
+    <?php
+}
+
+function campaignkit_fluentcrm_handle_validate_action() {
+    if (isset($_POST['campaignkit_fluentcrm_validate'])) {
+        // Verify nonce for security
+        if (check_admin_referer('general-options')) {
+            // Handle the action triggered by the button
+            campaignkit_fluentcrm_perform_validate();
+        }
+    }
+}
+
+function campaignkit_fluentcrm_perform_validate() {
+    wp_schedule_single_event( time() + 2, 'campaignkit_fluentcrm_validate_hook' );
+}
+
+function campaignkit_fluentcrm_run_validate() {
+    $api_key = get_option( "campaignkit_apikey" );
+    $contactApi = FluentCrmApi('contacts');
+    $contacts  = $contactApi->getInstance()->get();
+
+    foreach ($contacts as $contact) {
+        campaignkit_validate_email($contact);
+    }
+}
+
 /* Admin init */
 add_action( "admin_init", "campaignkit_settings_init" );
+add_action( "admin_init", "campaignkit_fluentcrm_handle_validate_action");
+add_action( 'campaignkit_fluentcrm_validate_hook', 'campaignkit_fluentcrm_run_validate' );
