@@ -3,7 +3,7 @@
 /**
  * @wordpress-plugin
  * Plugin Name:  CampaignKit - Email Validation for FluentCRM
- * Version    :  1.0
+ * Version    :  1.1
  * Description:  Validates the email address for newly created contacts in FluentCRM
  * Author     :  campaignkit.cc
  * Author URI :  https://campaignkit.cc/
